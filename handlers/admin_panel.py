@@ -65,8 +65,10 @@ def get_admin_main_keyboard() -> InlineKeyboardMarkup:
 async def build_dashboard_text() -> str:
     """Global statistika dashboard matni"""
     stats = await db.get_global_system_stats()
+    engine_name = stats.get("engine", "SQLite")
     return (
         "👑 <b>Boshqaruv Paneli (Admin Panel)</b>\n\n"
+        f"⚙️ Baza turi: <b>{engine_name}</b>\n\n"
         "📊 <b>Tizim statistikasi:</b>\n"
         f"👤 Jami foydalanuvchilar: <b>{stats['total_users']}</b> ta (Faol: {stats['active_users']})\n"
         f"👤 Bugun qo'shilganlar: <b>+{stats['today_users']}</b> ta\n\n"
@@ -126,6 +128,26 @@ async def cb_admin_close(callback: CallbackQuery, state: FSMContext):
 async def cb_admin_backup(callback: CallbackQuery):
     """Ma'lumotlar bazasini yuklab olish"""
     await callback.answer("Baza tayyorlanmoqda...")
+    if db.is_postgres:
+        try:
+            dump_file = await db.export_database_dump()
+            size_kb = round(os.path.getsize(dump_file) / 1024, 1)
+            filename = f"postgres_backup_{int(time.time())}.json"
+            file = FSInputFile(dump_file, filename=filename)
+            caption = (
+                "💾 <b>PostgreSQL ma'lumotlar bazasi zaxira nusxasi (JSON)</b>\n"
+                f"📅 Sana: <code>{time.strftime('%Y-%m-%d %H:%M:%S')}</code>\n"
+                f"📦 Hajmi: <b>{size_kb} KB</b>\n"
+                "ℹ️ <i>Barcha jadvallar (groups, users, members, referrals) to'liq eksport qilindi.</i>"
+            )
+            await callback.message.answer_document(file, caption=caption, parse_mode="HTML")
+            return
+        except Exception as e:
+            logger.error(f"PostgreSQL backup error: {e}")
+            await callback.message.answer(f"❌ Zaxira nusxa yaratishda xatolik: {e}")
+            return
+
+    # SQLite
     if not os.path.exists(config.DB_PATH):
         await callback.message.answer("❌ Ma'lumotlar bazasi fayli topilmadi!")
         return
@@ -135,11 +157,12 @@ async def cb_admin_backup(callback: CallbackQuery):
     file = FSInputFile(config.DB_PATH, filename=filename)
 
     caption = (
-        "💾 <b>Ma'lumotlar bazasi zaxira nusxasi</b>\n"
+        "💾 <b>SQLite ma'lumotlar bazasi zaxira nusxasi</b>\n"
         f"📅 Sana: <code>{time.strftime('%Y-%m-%d %H:%M:%S')}</code>\n"
         f"📦 Hajmi: <b>{size_mb} MB</b>"
     )
     await callback.message.answer_document(file, caption=caption, parse_mode="HTML")
+
 
 
 # ─── KESHNI TOZALASH ───
