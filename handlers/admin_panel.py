@@ -240,6 +240,8 @@ async def cb_admin_group_view(callback: CallbackQuery):
     title = grp.get("title") or "Nomsiz guruh"
     status_str = "🟢 Faol" if grp.get("is_active") else "🔴 Nofaol"
     channel_str = grp.get("channel_username") or grp.get("channel_title") or grp.get("channel_id") or "Ulanmagan"
+    anticheat_str = "Yoqilgan" if grp.get("anticheat") else "O'chirilgan"
+    captcha_str = "Yoqilgan" if grp.get("captcha") else "O'chirilgan"
 
     text = (
         f"🏢 <b>Guruh ma'lumotlari:</b>\n\n"
@@ -249,8 +251,8 @@ async def cb_admin_group_view(callback: CallbackQuery):
         f"🎯 Belgilangan limit: <b>{grp.get('required_count', 0)}</b> ta\n"
         f"📢 Majburiy kanal: <b>{channel_str}</b>\n"
         f"🌐 Tili: <b>{grp.get('language', 'qr').upper()}</b>\n"
-        f"🛡 Anti-cheat: <b>{'Yoqilgan' if grp.get('anticheat') else 'O\'chirilgan'}</b>\n"
-        f"🤖 Captcha: <b>{'Yoqilgan' if grp.get('captcha') else 'O\'chirilgan'}</b>\n\n"
+        f"🛡 Anti-cheat: <b>{anticheat_str}</b>\n"
+        f"🤖 Captcha: <b>{captcha_str}</b>\n\n"
         f"📊 <b>Guruh a'zolari:</b>\n"
         f"• Bazadagi a'zolar: <b>{stats['total_members']}</b> ta\n"
         f"• Qo'shilgan takliflar: <b>{stats['total_added']}</b> ta\n"
