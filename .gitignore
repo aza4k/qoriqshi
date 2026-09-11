@@ -1,0 +1,45 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Environments & Virtualenv
+.env
+.env.local
+.env.*.local
+venv/
+.venv/
+env/
+ENV/
+
+# Database files (local SQLite storage)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+database/*.db
+database/*.db-wal
+database/*.db-shm
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs & scratch
+*.log
+scratch/
+.gemini/
+
+# Scratch docx
+~*.docx
