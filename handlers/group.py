@@ -673,10 +673,19 @@ async def process_member_join(bot: Bot, chat_id: int, chat_title: str, new_user,
                     text = f"{EMOJI_PARTY} {mention}, сиз {new_user_mention}ди қосдыңыз! (Жәми: <b>{current_cnt}</b>)"
 
             try:
-                msg = await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
-                asyncio.create_task(delete_message_delayed(bot, chat_id, msg.message_id, 8))
+                msg = await bot.send_message(
+                    chat_id=chat_id,
+                    text=text,
+                    parse_mode="HTML",
+                    receiver_user_id=referrer.id
+                )
             except Exception:
-                pass
+                try:
+                    msg = await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+                except Exception:
+                    msg = None
+            if msg:
+                asyncio.create_task(delete_message_delayed(bot, chat_id, msg.message_id, 10))
 
         elif reason in ["already_exists_same_user", "already_exists_other"]:
             if lang == "ru":
@@ -703,11 +712,17 @@ async def process_member_join(bot: Bot, chat_id: int, chat_title: str, new_user,
                 msg = await bot.send_message(
                     chat_id=chat_id,
                     text=already_text,
-                    parse_mode="HTML"
+                    parse_mode="HTML",
+                    receiver_user_id=referrer.id
                 )
-                asyncio.create_task(delete_message_delayed(bot, chat_id, msg.message_id, 8))
             except Exception:
-                pass
+                try:
+                    msg = await bot.send_message(chat_id=chat_id, text=already_text, parse_mode="HTML")
+                except Exception:
+                    msg = None
+            if msg:
+                asyncio.create_task(delete_message_delayed(bot, chat_id, msg.message_id, 10))
+
 
 
 @router.message(F.new_chat_members)
@@ -805,8 +820,17 @@ async def on_left_chat_member(message: Message, bot: Bot):
                         f"{EMOJI_WARN} {mention}, сиз қосқан ағза (<b>{left_user.full_name}</b>) шығып кетти.\n"
                         f"{EMOJI_CHART} Жаңа есап бетиңиз: <b>{new_count}/{required}</b>"
                     )
-                msg = await message.answer(left_text, parse_mode="HTML")
-                asyncio.create_task(delete_message_delayed(bot, chat_id, msg.message_id, 8))
+                try:
+                    msg = await bot.send_message(
+                        chat_id=chat_id,
+                        text=left_text,
+                        parse_mode="HTML",
+                        receiver_user_id=referrer_id
+                    )
+                except Exception:
+                    msg = await message.answer(left_text, parse_mode="HTML")
+                if msg:
+                    asyncio.create_task(delete_message_delayed(bot, chat_id, msg.message_id, 8))
             except Exception:
                 pass
 
@@ -871,8 +895,17 @@ async def on_chat_member_left(event: ChatMemberUpdated, bot: Bot):
                     f"{EMOJI_WARN} {mention}, сиз қосқан ағза (<b>{left_user.full_name}</b>) шығып кетти.\n"
                     f"{EMOJI_CHART} Жаңа есап бетиңиз: <b>{new_count}/{required}</b>"
                 )
-            msg = await bot.send_message(chat_id=chat_id, text=left_text, parse_mode="HTML")
-            asyncio.create_task(delete_message_delayed(bot, chat_id, msg.message_id, 8))
+            try:
+                msg = await bot.send_message(
+                    chat_id=chat_id,
+                    text=left_text,
+                    parse_mode="HTML",
+                    receiver_user_id=referrer_id
+                )
+            except Exception:
+                msg = await bot.send_message(chat_id=chat_id, text=left_text, parse_mode="HTML")
+            if msg:
+                asyncio.create_task(delete_message_delayed(bot, chat_id, msg.message_id, 8))
         except Exception:
             pass
 
@@ -1029,8 +1062,7 @@ async def check_group_message(message: Message, bot: Bot):
                 [
                     InlineKeyboardButton(
                         text=tr("btn_i_added", lang=lang),
-                        callback_data=f"check_my_status:{user.id}",
-                        icon_custom_emoji_id=CUSTOM_ID_CHECK
+                        callback_data=f"check_my_status:{user.id}"
                     )
                 ]
             ]
@@ -1079,21 +1111,18 @@ async def check_group_message(message: Message, bot: Bot):
                 mention=mention
             )
 
-            # Aynan rasmdagidek 2 ta tugma (premium animatsion ikonka bilan):
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
                             text=f"{channel_btn_name}",
-                            url=channel_url,
-                            icon_custom_emoji_id=CUSTOM_ID_LOUDSPEAKER
+                            url=channel_url
                         )
                     ],
                     [
                         InlineKeyboardButton(
                             text=tr("btn_check_sub", lang=lang),
-                            callback_data=f"check_sub:{user.id}",
-                            icon_custom_emoji_id=CUSTOM_ID_CHECK
+                            callback_data=f"check_sub:{user.id}"
                         )
                     ]
                 ]
