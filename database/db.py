@@ -79,10 +79,23 @@ class Database:
                 )
             """)
 
+            # Bot bilan muloqot qilgan barcha foydalanuvchilar (Admin panel va Rassilka uchun)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id INTEGER PRIMARY KEY,
+                    full_name TEXT,
+                    username TEXT,
+                    language TEXT DEFAULT 'qr',
+                    is_active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
             # 100k guruh uchun yuqori tezlikdagi indekslar
             await db.execute("CREATE INDEX IF NOT EXISTS idx_members_chat_user ON group_members(chat_id, user_id);")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_ref_chat_joined ON referral_history(chat_id, joined_user_id);")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_ref_chat_ref ON referral_history(chat_id, referrer_id);")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active);")
             await db.commit()
 
             # ── Migration: Mavjud bazaga yangi ustunlarni qo'shish ──
@@ -93,6 +106,10 @@ class Database:
                 ("groups",           "channel_title TEXT DEFAULT ''"),
                 ("groups",           "captcha INTEGER DEFAULT 1"),
                 ("groups",           "language TEXT DEFAULT 'qr'"),
+                ("groups",           "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+                ("users",            "language TEXT DEFAULT 'qr'"),
+                ("users",            "is_active INTEGER DEFAULT 1"),
+                ("users",            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
                 ("referral_history", "joined_user_name TEXT DEFAULT ''"),
                 ("referral_history", "joined_user_username TEXT DEFAULT ''"),
                 ("referral_history", "is_left INTEGER DEFAULT 0"),
@@ -459,5 +476,121 @@ class Database:
             await db.execute("UPDATE groups SET language = ? WHERE chat_id = ?", (lang, chat_id))
             await db.commit()
 
+    # ─── ADMIN PANEL VA RASSILKA METODLARI ───
+
+    async def register_user(self, user_id: int, full_name: str = "", username: str = "", language: str = "qr"):
+        """Foydalanuvchini bazaga qo'shish yoki ma'lumotlarini yangilash"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT INTO users (user_id, full_name, username, language, is_active)
+                VALUES (?, ?, ?, ?, 1)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    full_name = excluded.full_name,
+                    username = excluded.username,
+                    is_active = 1
+            """, (user_id, full_name, username, language))
+            await db.commit()
+
+    async def set_user_active_status(self, user_id: int, is_active: bool):
+        """Foydalanuvchi botni bloklagan bo'lsa yoki aktiv bo'lsa yangilash"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("UPDATE users SET is_active = ? WHERE user_id = ?", (1 if is_active else 0, user_id))
+            await db.commit()
+
+    async def get_global_system_stats(self) -> Dict[str, Any]:
+        """Tizimning global statistikasini hisoblash (Admin Panel uchun)"""
+        async with aiosqlite.connect(self.db_path) as db:
+            # Guruhlar soni
+            cursor = await db.execute("SELECT COUNT(*), SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) FROM groups")
+            total_groups, active_groups = await cursor.fetchone()
+            total_groups = total_groups or 0
+            active_groups = active_groups or 0
+            inactive_groups = total_groups - active_groups
+
+            # Foydalanuvchilar soni
+            cursor = await db.execute("SELECT COUNT(*), SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) FROM users")
+            total_users, active_users = await cursor.fetchone()
+            total_users = total_users or 0
+            active_users = active_users or 0
+
+            # Jami taklif qilingan odamlar soni
+            cursor = await db.execute("SELECT COUNT(*) FROM referral_history")
+            total_referrals = (await cursor.fetchone())[0] or 0
+
+            # Bugungi yangi guruhlar
+            cursor = await db.execute("SELECT COUNT(*) FROM groups WHERE DATE(created_at) = DATE('now')")
+            today_groups = (await cursor.fetchone())[0] or 0
+
+            # Bugungi yangi userlar
+            cursor = await db.execute("SELECT COUNT(*) FROM users WHERE DATE(created_at) = DATE('now')")
+            today_users = (await cursor.fetchone())[0] or 0
+
+            # DB fayl hajmi
+            db_size_mb = 0.0
+            if os.path.exists(self.db_path):
+                db_size_mb = round(os.path.getsize(self.db_path) / (1024 * 1024), 2)
+
+            return {
+                "total_groups": total_groups,
+                "active_groups": active_groups,
+                "inactive_groups": inactive_groups,
+                "total_users": total_users,
+                "active_users": active_users,
+                "total_referrals": total_referrals,
+                "today_groups": today_groups,
+                "today_users": today_users,
+                "db_size_mb": db_size_mb,
+            }
+
+    async def get_all_user_ids(self) -> List[int]:
+        """Barcha aktiv foydalanuvchilar ID ro'yxati (rassilka uchun)"""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("SELECT user_id FROM users WHERE is_active = 1")
+            rows = await cursor.fetchall()
+            return [row[0] for row in rows]
+
+    async def get_all_group_ids(self) -> List[int]:
+        """Barcha aktiv guruhlar ID ro'yxati (rassilka uchun)"""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("SELECT chat_id FROM groups WHERE is_active = 1")
+            rows = await cursor.fetchall()
+            return [row[0] for row in rows]
+
+    async def get_recent_groups(self, limit: int = 10, offset: int = 0) -> List[Dict[str, Any]]:
+        """Guruhlar ro'yxatini olish (pagination bilan)"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM groups ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset)
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def count_total_groups(self) -> int:
+        """Guruhlar umumiy soni"""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("SELECT COUNT(*) FROM groups")
+            return (await cursor.fetchone())[0] or 0
+
+    async def search_groups(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Guruh nomi yoki chat_id bo'yicha qidirish"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM groups WHERE title LIKE ? OR CAST(chat_id AS TEXT) LIKE ? LIMIT ?",
+                (f"%{query}%", f"%{query}%", limit)
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def get_group_by_id(self, chat_id: int) -> Optional[Dict[str, Any]]:
+        """Guruh ma'lumotlarini chat_id orqali olish"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM groups WHERE chat_id = ?", (chat_id,))
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
 db = Database()
+
 

@@ -15,6 +15,7 @@ from aiogram.types import BotCommand, BotCommandScopeDefault
 from config import config
 from database.db import db
 from handlers.admin import router as admin_router
+from handlers.admin_panel import router as admin_panel_router
 from handlers.group import router as group_router
 from handlers.user import router as user_router
 
@@ -88,7 +89,8 @@ async def main():
     dp = Dispatcher()
 
     # Routerlarni ro'yxatdan o'tkazish
-    # Eslatma: Tartib muhim: Admin -> Guruh -> Shaxsiy chat
+    # Eslatma: Tartib muhim: Bot Admin Panel -> Shaxsiy chat -> Guruh adminlari -> Guruh
+    dp.include_router(admin_panel_router)
     dp.include_router(user_router)
     dp.include_router(admin_router)
     dp.include_router(group_router)

@@ -5,6 +5,7 @@ from database.db import db
 from filters.chat_type import ChatTypeFilter
 from utils.cache import cache
 from utils.i18n import tr, get_user_lang, clean_alert_text
+from config import config
 from utils.emojis import (
     EMOJI_PIN, EMOJI_POINT_DOWN, EMOJI_CHART, EMOJI_CHECK,
     EMOJI_STAR, EMOJI_GREEN_CIRCLE, EMOJI_HOURGLASS, EMOJI_PEOPLE,
@@ -17,37 +18,43 @@ router = Router()
 router.message.filter(ChatTypeFilter("private"))
 router.callback_query.filter(ChatTypeFilter("private"))
 
-def get_start_keyboard(bot_username: str, lang: str = "qr") -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=tr("btn_add_group", lang),
-                    url=f"https://t.me/{bot_username}?startgroup=true&admin=post_messages+delete_messages+restrict_members",
-                    icon_custom_emoji_id=CUSTOM_ID_PEOPLE
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=tr("btn_my_stats", lang),
-                    callback_data="user_global_stats",
-                    icon_custom_emoji_id=CUSTOM_ID_CHART
-                ),
-                InlineKeyboardButton(
-                    text=tr("btn_change_lang", lang),
-                    callback_data="user_select_lang",
-                    icon_custom_emoji_id=CUSTOM_ID_LANG
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=tr("btn_help", lang),
-                    callback_data="user_help",
-                    icon_custom_emoji_id=CUSTOM_ID_BOOK
-                )
-            ]
+def get_start_keyboard(bot_username: str, lang: str = "qr", is_admin: bool = False) -> InlineKeyboardMarkup:
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text=tr("btn_add_group", lang),
+                url=f"https://t.me/{bot_username}?startgroup=true&admin=post_messages+delete_messages+restrict_members",
+                icon_custom_emoji_id=CUSTOM_ID_PEOPLE
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=tr("btn_my_stats", lang),
+                callback_data="user_global_stats",
+                icon_custom_emoji_id=CUSTOM_ID_CHART
+            ),
+            InlineKeyboardButton(
+                text=tr("btn_change_lang", lang),
+                callback_data="user_select_lang",
+                icon_custom_emoji_id=CUSTOM_ID_LANG
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=tr("btn_help", lang),
+                callback_data="user_help",
+                icon_custom_emoji_id=CUSTOM_ID_BOOK
+            )
         ]
-    )
+    ]
+    if is_admin:
+        buttons.append([
+            InlineKeyboardButton(
+                text="👑 Admin Panel",
+                callback_data="admin_open_panel"
+            )
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_language_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -66,12 +73,21 @@ def get_language_keyboard() -> InlineKeyboardMarkup:
 @router.message(CommandStart())
 async def cmd_start(message: Message, bot: Bot):
     """Shaxsiy chatda /start buyrug'i"""
-    user_id = message.from_user.id
+    user = message.from_user
+    user_id = user.id
     saved_lang = cache.get_user_language(user_id)
     if not saved_lang:
         saved_lang = await db.get_user_language(user_id)
         if saved_lang:
             cache.set_user_language(user_id, saved_lang)
+
+    # Foydalanuvchini bazaga saqlash / yangilash
+    await db.register_user(
+        user_id=user_id,
+        full_name=user.full_name or "",
+        username=user.username or "",
+        language=saved_lang or "qr"
+    )
 
     # Agar foydalanuvchi hali til tanlamagan bo'lsa -> Til menyusini chiqaramiz
     if not saved_lang:
@@ -80,9 +96,10 @@ async def cmd_start(message: Message, bot: Bot):
         return
 
     bot_info = await bot.get_me()
-    name = message.from_user.full_name
+    name = user.full_name
     text = tr("start_message", saved_lang, name=name)
-    await message.answer(text, reply_markup=get_start_keyboard(bot_info.username, saved_lang), parse_mode="HTML")
+    is_admin = user_id in config.ADMINS
+    await message.answer(text, reply_markup=get_start_keyboard(bot_info.username, saved_lang, is_admin=is_admin), parse_mode="HTML")
 
 
 @router.callback_query(F.data == "user_select_lang")
@@ -101,15 +118,23 @@ async def show_lang_selection(event: Message | CallbackQuery):
 async def process_user_lang_selection(callback: CallbackQuery, bot: Bot):
     """Til tanlanganda ishlaydigan handler"""
     lang = callback.data.split(":")[1]
-    user_id = callback.from_user.id
+    user = callback.from_user
+    user_id = user.id
     await db.set_user_language(user_id, lang)
     cache.set_user_language(user_id, lang)
+    await db.register_user(
+        user_id=user_id,
+        full_name=user.full_name or "",
+        username=user.username or "",
+        language=lang
+    )
     await callback.answer(clean_alert_text(tr("lang_changed_success", lang)))
 
     bot_info = await bot.get_me()
-    name = callback.from_user.full_name
+    name = user.full_name
     text = tr("start_message", lang, name=name)
-    await callback.message.edit_text(text, reply_markup=get_start_keyboard(bot_info.username, lang), parse_mode="HTML")
+    is_admin = user_id in config.ADMINS
+    await callback.message.edit_text(text, reply_markup=get_start_keyboard(bot_info.username, lang, is_admin=is_admin), parse_mode="HTML")
 
 
 @router.message(Command(commands=["mymembers", "my_members", "my", "stat", "mystat"]))

@@ -95,4 +95,13 @@ class MemoryCache:
     def remove_muted(self, chat_id: int, user_id: int):
         self._muted_users.pop((chat_id, user_id), None)
 
+    def clear_all(self):
+        """Barcha kesh xotiralarini tozalash"""
+        self._admins.clear()
+        self._allowed_users.clear()
+        self._group_settings.clear()
+        self._muted_users.clear()
+        self._user_languages.clear()
+        self._recently_joined.clear()
+
 cache = MemoryCache()
